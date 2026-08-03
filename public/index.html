@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>진짜공고 — 소상공인 정책자금 사칭 판별 AI</title>
+<meta name="description" content="받으신 정책자금 안내 문자, 진짜 공고인지 정부 공고 원본과 대조해 확인해 드립니다." />
+<meta property="og:title" content="진짜공고 — 정책자금 사칭 판별 AI" />
+<meta property="og:description" content="문장이 사기처럼 보이는지가 아니라, 그 사업이 실제로 존재하는지를 확인합니다." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=IBM+Plex+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --ink:#101d33; --ink-2:#22304a; --paper:#f6f2e8; --paper-2:#efe9db;
+  --rule:#c9bfa8; --muted:#6b6455;
+  --safe:#0f6b45; --caution:#8a6a12; --danger:#a3231f; --warn:#a85a17;
+  --seal:#b32a25;
+  --f-disp:'Gowun Batang',serif; --f-body:'IBM Plex Sans KR',sans-serif;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  background:var(--ink); color:var(--ink); font-family:var(--f-body);
+  font-size:16px; line-height:1.65; -webkit-font-smoothing:antialiased;
+}
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.5;
+  background-image:radial-gradient(circle at 20% 10%,rgba(255,255,255,.05),transparent 45%);
+}
+.wrap{max-width:720px;margin:0 auto;padding:0 0 64px;position:relative;z-index:1}
+
+/* ---------- 머리 ---------- */
+header{padding:34px 22px 26px;color:var(--paper)}
+.brandline{display:flex;align-items:baseline;gap:10px}
+.logo{font-family:var(--f-disp);font-weight:700;font-size:34px;letter-spacing:-.02em;color:var(--paper)}
+.logo .dot{color:var(--seal)}
+.tag{font-size:12.5px;letter-spacing:.14em;color:#9fb0c9;font-weight:500}
+.lede{margin:14px 0 0;font-family:var(--f-disp);font-size:19px;line-height:1.55;color:#e8e2d4}
+.lede b{color:#fff;font-weight:700;border-bottom:2px solid var(--seal);padding-bottom:1px}
+.sub{margin:10px 0 0;font-size:13.5px;color:#93a3ba;line-height:1.6}
+
+/* ---------- 종이 ---------- */
+.sheet{
+  background:var(--paper);border-radius:3px;margin:0 12px;
+  box-shadow:0 18px 44px rgba(0,0,0,.4),0 1px 0 #fff inset;
+  background-image:repeating-linear-gradient(180deg,transparent 0 31px,rgba(201,191,168,.28) 31px 32px);
+  padding:26px 20px 24px;position:relative;overflow:hidden;
+}
+.sheet::before{content:"";position:absolute;left:0;top:0;width:100%;height:6px;
+  background:linear-gradient(90deg,var(--ink) 0 33%,var(--seal) 33% 40%,var(--ink) 40% 100%)}
+.sheet-h{font-family:var(--f-disp);font-weight:700;font-size:15px;letter-spacing:.02em;
+  display:flex;align-items:center;gap:8px;margin:0 0 14px;color:var(--ink)}
+.sheet-h::after{content:"";flex:1;height:1px;background:var(--rule)}
+
+textarea{
+  width:100%;min-height:168px;resize:vertical;border:1.5px solid var(--rule);
+  background:rgba(255,255,255,.62);border-radius:2px;padding:14px;font-family:var(--f-body);
+  font-size:15.5px;line-height:1.7;color:var(--ink);outline:none;
+}
+textarea:focus{border-color:var(--ink);background:#fff}
+textarea::placeholder{color:#9b937f}
+
+.maskbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-height:26px;margin:10px 0 0;font-size:12.5px;color:var(--muted)}
+.chip{background:#e4ded0;border:1px solid var(--rule);border-radius:2px;padding:2px 7px;font-size:11.5px;color:#4b4536;font-weight:500}
+.chip.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+
+.actions{display:flex;gap:9px;margin-top:16px}
+button{font-family:var(--f-body);cursor:pointer;border-radius:2px;transition:.15s}
+.btn-go{
+  flex:1;background:var(--ink);color:var(--paper);border:none;padding:15px;
+  font-size:16.5px;font-weight:600;letter-spacing:.06em;
+}
+.btn-go:hover{background:#1c2c48}
+.btn-go:disabled{opacity:.5;cursor:wait}
+.btn-clear{background:transparent;border:1.5px solid var(--rule);color:var(--muted);padding:15px 16px;font-size:14px}
+
+/* ---------- 샘플 ---------- */
+.samples{margin:18px 0 0;padding-top:16px;border-top:1px dashed var(--rule)}
+.samples p{margin:0 0 10px;font-size:12.5px;color:var(--muted)}
+.sgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sbtn{text-align:left;background:rgba(255,255,255,.5);border:1px solid var(--rule);padding:9px 11px;line-height:1.4}
+.sbtn:hover{background:#fff;border-color:var(--ink)}
+.sbtn b{display:block;font-size:13.5px;font-weight:600;color:var(--ink)}
+.sbtn span{font-size:11px;color:var(--muted)}
+
+/* ---------- 결과 ---------- */
+#result{margin:14px 12px 0}
+.card{background:var(--paper);border-radius:3px;padding:0 0 22px;overflow:hidden;
+  box-shadow:0 18px 44px rgba(0,0,0,.4);animation:rise .45s cubic-bezier(.2,.8,.25,1)}
+@keyframes rise{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
+.vhead{padding:24px 20px 20px;display:flex;gap:16px;align-items:center;position:relative;
+  border-bottom:2px solid var(--ink)}
+.seal{
+  flex:0 0 96px;height:96px;border-radius:50%;border:3.5px solid var(--seal);color:var(--seal);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  font-family:var(--f-disp);font-weight:700;line-height:1.1;transform:rotate(-9deg);
+  animation:stamp .5s cubic-bezier(.2,1.4,.4,1) .12s both;
+  box-shadow:0 0 0 2px rgba(179,42,37,.16) inset;
+}
+@keyframes stamp{0%{opacity:0;transform:rotate(-9deg) scale(2.1)}70%{opacity:1;transform:rotate(-9deg) scale(.94)}100%{opacity:1;transform:rotate(-9deg) scale(1)}}
+.seal .g{font-size:26px}
+.seal .l{font-size:14.5px;letter-spacing:-.03em;padding:0 6px;text-align:center}
+.seal[data-tone=safe]{border-color:var(--safe);color:var(--safe);box-shadow:0 0 0 2px rgba(15,107,69,.14) inset}
+.seal[data-tone=caution]{border-color:var(--caution);color:var(--caution);box-shadow:0 0 0 2px rgba(138,106,18,.14) inset}
+.seal[data-tone=warn]{border-color:var(--warn);color:var(--warn);box-shadow:0 0 0 2px rgba(168,90,23,.14) inset}
+.vtext{flex:1;min-width:0}
+.vtext h2{margin:0 0 6px;font-family:var(--f-disp);font-size:19px;line-height:1.45;font-weight:700}
+.vtext p{margin:0;font-size:13.8px;color:#4d4636;line-height:1.6}
+.riskbar{height:5px;background:#e0d9c8}
+.riskbar i{display:block;height:100%;transition:width .6s ease .3s;width:0}
+
+.sec{padding:18px 20px 0}
+.sec h3{margin:0 0 9px;font-size:12px;letter-spacing:.1em;color:var(--muted);font-weight:600;
+  display:flex;align-items:center;gap:8px}
+.sec h3::after{content:"";flex:1;height:1px;background:var(--rule)}
+.layer{margin:0 0 14px}
+.layer .lb{font-family:var(--f-disp);font-weight:700;font-size:14px;margin:0 0 5px}
+.layer ul{margin:0;padding-left:17px}
+.layer li{font-size:14px;line-height:1.62;margin:0 0 4px;color:#2b2b26}
+.layer.empty .lb{color:#a09880}
+.none{font-size:13px;color:#8d866f;padding-left:2px}
+
+.factgrid{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:13.5px}
+.factgrid dt{color:var(--muted);white-space:nowrap}
+.factgrid dd{margin:0;color:var(--ink);word-break:break-all}
+
+.hit{border:1.5px solid var(--ink);background:rgba(255,255,255,.6);padding:12px 13px;margin-top:4px}
+.hit .n{font-weight:600;font-size:14.5px;line-height:1.45;margin:0 0 5px}
+.hit .m{font-size:12.5px;color:var(--muted)}
+
+a.cta{display:block;text-align:center;margin:18px 20px 0;background:var(--ink);color:var(--paper);
+  text-decoration:none;padding:14px;font-weight:600;font-size:15px;border-radius:2px}
+a.cta:hover{background:#1c2c48}
+.note{margin:14px 20px 0;font-size:12.5px;color:var(--muted);line-height:1.6;
+  border-left:3px solid var(--rule);padding-left:11px}
+
+footer{color:#8595ad;font-size:12px;line-height:1.75;padding:26px 22px 0;text-align:left}
+footer b{color:#c3cede;font-weight:600}
+footer hr{border:0;border-top:1px solid #2a3852;margin:14px 0}
+.err{background:#fdecec;border:1px solid #e0a5a3;color:#8c1f1b;padding:13px;font-size:14px;border-radius:2px}
+.load{display:flex;align-items:center;gap:10px;color:var(--paper);padding:22px;justify-content:center;font-size:14.5px}
+.spin{width:15px;height:15px;border:2px solid rgba(246,242,232,.3);border-top-color:var(--paper);border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media(min-width:640px){ .sheet,#result{margin-left:22px;margin-right:22px} .logo{font-size:40px} .lede{font-size:21px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="brandline">
+    <span class="logo">진짜공고<span class="dot">.</span></span>
+    <span class="tag">REAL NOTICE VERIFIER</span>
+  </div>
+  <p class="lede">문장이 사기처럼 <b>보이는지</b>가 아니라,<br />그 사업이 실제로 <b>존재하는지</b>를 확인합니다.</p>
+  <p class="sub">받으신 정책자금·지원금 안내 문자를 정부가 공개한 공고 원본과 대조해 드립니다. 설치·가입 없이 붙여넣기만 하십시오.</p>
+</header>
+
+<section class="sheet">
+  <h2 class="sheet-h">받으신 문자 붙여넣기</h2>
+  <textarea id="ta" placeholder="예) [국제발신] 귀하께서는 소상공인 특별지원금 대상자로 선정되어 안내드립니다…"></textarea>
+  <div class="maskbar" id="mask"><span style="color:#8d866f">전화번호·계좌번호 등은 전송 전 이 브라우저에서 자동으로 가려집니다.</span></div>
+  <div class="actions">
+    <button class="btn-go" id="go">진 위 판 별</button>
+    <button class="btn-clear" id="clr">지우기</button>
+  </div>
+
+  <div class="samples">
+    <p>심사·시연용 샘플 — 눌러서 바로 판별해 보실 수 있습니다.</p>
+    <div class="sgrid" id="sg"></div>
+  </div>
+</section>
+
+<div id="result"></div>
+
+<footer>
+  <b>개인정보 처리</b> — 입력하신 내용은 전송 전 브라우저 안에서 전화번호·계좌번호·주민등록번호·이메일이 자동 마스킹되며, 서버에서 한 번 더 마스킹합니다. 원문은 <b>저장·기록하지 않으며</b> 판별 즉시 폐기됩니다. 회원가입·로그인 절차가 없어 수집하는 개인정보 항목 자체가 없습니다.
+  <hr />
+  <b>대조 데이터</b> — 중소벤처기업부 기업마당 지원사업 공고(공공누리 개방자료) <span id="ds"></span>
+  <hr />
+  <b>유의</b> — 본 서비스는 참고 정보를 제공하는 보조 도구이며 법적 효력이 없습니다. ‘공고 미확인’은 사기를 뜻하지 않습니다. 최종 확인은 반드시 소관기관 대표번호를 통해 하시기 바랍니다.
+  <div style="margin-top:14px;color:#5f6f88">2026 금융 AI Challenge 출품작 · 진짜공고</div>
+</footer>
+</div>
+
+<script>
+const MASKS=[
+ [/(01[016-9])[-. ]?(\d{3,4})[-. ]?(\d{4})/g,"$1-****-****","휴대전화"],
+ [/(0(?:2|[3-6][1-5]))[-. ]?(\d{3,4})[-. ]?(\d{4})/g,"$1-***-****","전화번호"],
+ [/\d{6}[-\s]?[1-4]\d{6}/g,"******-*******","주민등록번호"],
+ [/\d{3}[-\s]\d{2}[-\s]\d{5}/g,"***-**-*****","사업자등록번호"],
+ [/\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b/g,"****-****-****-****","카드번호"],
+ [/\b\d{2,3}[-\s]\d{2,6}[-\s]\d{2,6}(?:[-\s]\d{2,6})?\b/g,"***-****-******","계좌번호"],
+ [/[\w.+-]+@[\w-]+\.[\w.]+/g,"****@****","이메일"],
+];
+const TONE={safe:"#0f6b45",caution:"#8a6a12",danger:"#a3231f",warn:"#a85a17"};
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function mask(t){const hit=[];let o=String(t||"");
+  for(const[re,rep,l]of MASKS){re.lastIndex=0;if(re.test(o))hit.push(l);re.lastIndex=0;o=o.replace(re,rep)}
+  return{text:o,hit:[...new Set(hit)]}}
+
+function paintMask(){const{hit}=mask($("ta").value);const b=$("mask");
+  b.innerHTML = hit.length
+    ? '<span>전송 전 자동 마스킹 :</span>'+hit.map(h=>`<span class="chip on">${h}</span>`).join("")
+    : '<span style="color:#8d866f">전화번호·계좌번호 등은 전송 전 이 브라우저에서 자동으로 가려집니다.</span>';}
+$("ta").addEventListener("input",paintMask);
+$("clr").onclick=()=>{$("ta").value="";paintMask();$("result").innerHTML=""};
+
+/* 샘플 */
+let SAMPLES=[];
+fetch("/api/sample").then(r=>r.json()).then(d=>{
+  SAMPLES=d.samples;
+  $("sg").innerHTML=d.samples.map((s,i)=>`<button class="sbtn" data-i="${i}"><b>${esc(s.label)}</b><span>${esc(s.desc)}</span></button>`).join("");
+  $("ds").textContent=`${(d.dataset.count||0).toLocaleString()}건 수록 · 기준 ${String(d.dataset.syncedAt).slice(0,10)}`;
+  $("sg").querySelectorAll(".sbtn").forEach(b=>b.onclick=()=>{
+    $("ta").value=SAMPLES[b.dataset.i].text;paintMask();run();});
+}).catch(()=>{$("sg").innerHTML='<span style="font-size:12.5px;color:#8d866f">샘플을 불러오지 못했습니다.</span>'});
+
+/* 판별 */
+async function run(){
+  const v=$("ta").value.trim();
+  if(v.length<5){$("result").innerHTML='<div class="card" style="padding:18px"><div class="err">판별할 문자 내용을 입력해 주십시오.</div></div>';return}
+  $("go").disabled=true;
+  $("result").innerHTML='<div class="load"><span class="spin"></span>공고 원본과 대조하는 중입니다…</div>';
+  window.scrollTo({top:$("result").offsetTop-90,behavior:"smooth"});
+  try{
+    const r=await fetch("/api/verify",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({text:mask(v).text})});
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||"판별 실패");
+    render(d);
+  }catch(e){
+    $("result").innerHTML=`<div class="card" style="padding:18px"><div class="err">${esc(e.message)}<br><span style="font-size:12.5px">잠시 후 다시 시도해 주십시오.</span></div></div>`;
+  }finally{$("go").disabled=false}
+}
+$("go").onclick=run;
+
+function layer(no,name,arr){
+  const has=arr&&arr.length;
+  return `<div class="layer${has?"":" empty"}"><p class="lb">【${no}계층】 ${name}</p>${
+    has?`<ul>${arr.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>`:'<p class="none">특이사항 없음</p>'}</div>`;
+}
+
+function render(d){
+  const v=d.verdict,g=d.guide,tone=v.tone,col=TONE[tone]||"#a3231f";
+  const f=d.extracted;
+  const facts=[["주장 사업명",f.claimed_program],["주장 기관",f.claimed_org],
+    ["언급 금액·조건",f.claimed_amount],["언급 기간",f.claimed_period]].filter(x=>x[1]);
+  $("result").innerHTML=`
+  <div class="card">
+    <div class="vhead">
+      <div class="seal" data-tone="${tone}"><span class="g">${v.grade}</span><span class="l">${esc(v.label)}</span></div>
+      <div class="vtext"><h2>${esc(g.headline)}</h2><p>${esc(g.action)}</p></div>
+    </div>
+    <div class="riskbar"><i id="rb" style="background:${col}"></i></div>
+
+    ${d.match&&d.match.strong?`<div class="sec"><h3>대조 결과</h3>
+      <div class="hit"><p class="n">${esc(d.match.name)}</p>
+      <p class="m">${esc(d.match.org)}${d.match.start?` · 접수 ${esc(d.match.start)} ~ ${esc(d.match.end)}`:""} · 일치도 ${(d.match.score*100).toFixed(0)}%</p></div></div>`:""}
+
+    ${facts.length?`<div class="sec"><h3>문자에서 추출한 정보</h3>
+      <dl class="factgrid">${facts.map(x=>`<dt>${x[0]}</dt><dd>${esc(x[1])}</dd>`).join("")}</dl></div>`:""}
+
+    <div class="sec"><h3>판정 근거 — 3계층 판별</h3>
+      ${layer(1,"공고 사실 대조",d.reasons.L1)}
+      ${layer(2,"사기 수법 패턴",d.reasons.L2)}
+      ${layer(3,"브로커 개입 탐지",d.reasons.L3)}
+    </div>
+
+    ${g.cta?`<a class="cta" href="${esc(g.cta.url)}" target="_blank" rel="noopener">${esc(g.cta.text)}</a>`:""}
+
+    ${d.candidates&&d.candidates.length&&!(d.match&&d.match.strong)?`<div class="sec"><h3>혹시 이 사업을 찾으셨습니까</h3>
+      ${d.candidates.map(c=>`<div class="hit" style="margin-bottom:6px"><p class="n">${esc(c.name)}</p>
+      <p class="m">${esc(c.org)} · <a href="${esc(c.url)}" target="_blank" rel="noopener" style="color:#101d33">공고 원문 보기</a></p></div>`).join("")}</div>`:""}
+
+    <p class="note">위험도 ${d.risk}점 / 100점. 판정은 정부 공고 데이터 대조와 규칙 검증으로 결정되며, AI는 문자에서 사실 정보를 추출하는 데에만 사용됩니다.
+    ${d.engine!=="ai"?"<br>(현재 AI 추출을 사용할 수 없어 규칙 기반으로 처리되었습니다.)":""}</p>
+  </div>`;
+  requestAnimationFrame(()=>{const rb=$("rb");if(rb)rb.style.width=d.risk+"%"});
+  window.scrollTo({top:$("result").offsetTop-90,behavior:"smooth"});
+}
+</script>
+</body>
+</html>

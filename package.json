@@ -1,0 +1,12 @@
+{
+  "name": "jinjja-gonggo",
+  "version": "1.0.0",
+  "description": "진짜공고 — 소상공인 정책자금 사칭 판별 AI (2026 금융 AI Challenge)",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "sync": "node scripts/sync.mjs",
+    "test": "node scripts/selftest.mjs"
+  }
+}
