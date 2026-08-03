@@ -13,7 +13,7 @@ function db() {
 
 /* ---------------- Gemini ---------------- */
 const MODELS = (process.env.GEMINI_MODELS ||
-  "gemini-2.0-flash,gemini-2.5-flash,gemini-flash-latest,gemini-2.0-flash-lite")
+  "gemini-3-flash-preview,gemini-flash-latest,gemini-3.5-flash,gemini-3.1-flash-lite,gemini-flash-lite-latest")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
@@ -44,7 +44,8 @@ const EXTRACT_PROMPT = `당신은 한국 소상공인이 받은 문자메시지�
 async function callGemini(prompt, key, timeoutMs = 9000) {
   const models = OK_MODEL ? [OK_MODEL, ...MODELS.filter((m) => m !== OK_MODEL)] : MODELS;
   let lastErr = "";
-  for (const m of models) {
+
+  const attempt = async (m, cfg) => {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
@@ -56,31 +57,36 @@ async function callGemini(prompt, key, timeoutMs = 9000) {
           signal: ctrl.signal,
           body: JSON.stringify({
             contents: [{ role: "user", parts: [{ text: prompt }] }],
-            generationConfig: {
-              temperature: 0,
-              maxOutputTokens: 2048,
-              responseMimeType: "application/json",
-              thinkingConfig: { thinkingBudget: 0 },
-            },
+            generationConfig: cfg,
           }),
         }
       );
       clearTimeout(timer);
-      if (!r.ok) {
-        let detail = "";
-        try { const b = await r.json(); detail = b?.error?.message || b?.error?.status || ""; } catch {}
-        lastErr = `${m}: HTTP ${r.status} ${String(detail).slice(0, 200)}`;
-        continue;
-      }
-      const j = await r.json();
-      const txt = j?.candidates?.[0]?.content?.parts?.map((p) => p.text).join("") || "";
-      if (!txt) { lastErr = `${m}: empty`; continue; }
-      OK_MODEL = m;
-      return { text: txt, model: m };
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) return { err: `${m}: HTTP ${r.status} ${String(body?.error?.message || "").slice(0, 160)}` };
+      const txt = body?.candidates?.[0]?.content?.parts?.map((p) => p.text).filter(Boolean).join("") || "";
+      if (!txt) return { err: `${m}: empty (finish=${body?.candidates?.[0]?.finishReason || "?"})` };
+      return { text: txt };
     } catch (e) {
       clearTimeout(timer);
-      lastErr = `${m}: ${e.name === "AbortError" ? "timeout" : e.message}`;
+      return { err: `${m}: ${e.name === "AbortError" ? "timeout" : e.message}` };
     }
+  };
+
+  const BASE = { temperature: 0, responseMimeType: "application/json" };
+  for (const m of models) {
+    // A안 : 추론 최소화 + 충분한 출력 토큰
+    let r = await attempt(m, { ...BASE, maxOutputTokens: 2048, thinkingConfig: { thinkingBudget: 0 } });
+    if (r.text) { OK_MODEL = m; return { text: r.text, model: m }; }
+    lastErr = r.err;
+
+    // B안 : thinkingConfig 미지원 또는 응답 공백 시 재시도
+    if (/HTTP 400|empty/.test(r.err)) {
+      r = await attempt(m, { ...BASE, maxOutputTokens: 6144 });
+      if (r.text) { OK_MODEL = m; return { text: r.text, model: m }; }
+      lastErr = r.err;
+    }
+    // 429·404는 즉시 다음 모델로
   }
   throw new Error(lastErr || "gemini unavailable");
 }
