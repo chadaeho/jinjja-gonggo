@@ -39,20 +39,49 @@ function grams(s) {
   return g;
 }
 
-export function similarity(a, b) {
+/** 공고 DB 전체의 n-gram 출현빈도(df) — 흔한 표현의 가중치를 낮추기 위함 */
+function ensureIdf(db) {
+  if (db.__idf) return db.__idf;
+  const df = new Map();
+  for (const it of db.items) for (const g of grams(it.key)) df.set(g, (df.get(g) || 0) + 1);
+  const N = Math.max(1, db.items.length);
+  const w = (g) => 1 / (1 + Math.log(1 + (df.get(g) || 0) * 40 / N));
+  db.__idf = w;
+  return w;
+}
+
+/** 가중 Dice 계수 — '소상공인·지원사업·공고' 같은 상용어의 영향력 축소 */
+export function similarity(a, b, w) {
   const A = grams(a), B = grams(b);
   if (!A.size || !B.size) return 0;
-  let inter = 0;
-  for (const x of A) if (B.has(x)) inter++;
-  return (2 * inter) / (A.size + B.size); // Dice 계수
+  const wt = w || (() => 1);
+  let inter = 0, sa = 0, sb = 0;
+  for (const x of A) { const v = wt(x); sa += v; if (B.has(x)) inter += v; }
+  for (const x of B) sb += wt(x);
+  return (2 * inter) / (sa + sb);
+}
+
+/** 주장 기관과 공고의 기관·지역·명칭 정합성 (null = 판단 불가) */
+const ORG_LIKE = /(부|청|처|원|공단|공사|재단|진흥원|테크노파크|센터|협회|조합|은행|시|도|군|구|국|과)$/;
+export function orgConsistent(claimedOrg, item) {
+  const c = String(claimedOrg || "").replace(/[^가-힣A-Za-z0-9]/g, "");
+  // 기관명 형태가 아니면 판단 보류(추출 잡음으로 정탐을 막지 않기 위함)
+  if (c.length < 2 || !ORG_LIKE.test(c)) return null;
+  const hay = `${item.org || ""}${item.region || ""}${item.name || ""}`.replace(/[^가-힣A-Za-z0-9]/g, "");
+  if (!hay) return null;
+  if (hay.includes(c)) return true;
+  const io = String(item.org || "").replace(/[^가-힣A-Za-z0-9]/g, "");
+  if (io && c.includes(io)) return true;
+  return hay.includes(c.slice(0, 3)) ? true : false;
 }
 
 /** 공고 DB 대조 — 상위 후보 반환 */
 export function matchProgram(claimed, db, topN = 3) {
   const key = normalize(claimed);
   if (key.length < 3) return [];
+  const w = db.items && db.items.length > 50 ? ensureIdf(db) : null;
   return db.items
-    .map((it) => ({ item: it, score: similarity(key, it.key) }))
+    .map((it) => ({ item: it, score: similarity(key, it.key, w) }))
     .filter((x) => x.score > 0.28)
     .sort((a, b) => b.score - a.score)
     .slice(0, topN);
@@ -127,8 +156,12 @@ export function judge({ extracted, signals, matches }) {
 
   /* ── 1계층 : 공고 사실 대조 ── */
   const best = matches[0];
-  const strong = best && best.score >= 0.55;
-  const weak = best && best.score >= 0.38 && best.score < 0.55;
+  const orgOk = best ? orgConsistent(extracted.claimed_org, best.item) : null;
+  // 기관이 불일치하면 훨씬 높은 일치도를 요구 (타 지역·타 기관 사업 오인 방지)
+  const need = orgOk === true ? 0.62 : 0.72;
+  // 기관이 명확히 불일치하면 일치도와 무관하게 '확인됨' 판정 불가
+  const strong = best && best.score >= need && orgOk !== false;
+  const weak = best && best.score >= 0.40 && !strong;
   let expired = false;
 
   if (strong) {
@@ -143,8 +176,14 @@ export function judge({ extracted, signals, matches }) {
     }
   } else if (weak) {
     reasons.L1.push(
-      `유사한 명칭의 공고(「${best.item.name}」)가 있으나 사업명이 정확히 일치하지 않음 — 실제 사업명을 미세 변형한 사칭일 수 있음`
+      `유사한 명칭의 공고(「${best.item.name}」)가 있으나 사업명이 정확히 일치하지 않음 — 실제 사업명을 미세 변형한 사칭이거나, 아직 수집되지 않은 별개 사업일 수 있음`
     );
+    if (orgOk === false) {
+      reasons.L1.push(
+        `문자가 밝힌 기관(${extracted.claimed_org})과 해당 공고의 소관기관(${best.item.org}${best.item.region ? ", " + best.item.region : ""})이 일치하지 않음 — 동일 명칭 사업이 다른 지역·기관에 존재하므로 해당 기관에 직접 확인 필요`
+      );
+      risk += 10;
+    }
     risk += 25;
   } else if (extracted.claimed_program) {
     reasons.L1.push(
