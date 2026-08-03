@@ -23,6 +23,7 @@ html,body{margin:0;padding:0}
 body{
   background:var(--ink); color:var(--ink); font-family:var(--f-body);
   font-size:16px; line-height:1.65; -webkit-font-smoothing:antialiased;
+  word-break:keep-all; overflow-wrap:break-word;
 }
 body::before{
   content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.5;
@@ -123,11 +124,11 @@ button{font-family:var(--f-body);cursor:pointer;border-radius:2px;transition:.15
 
 .factgrid{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:13.5px}
 .factgrid dt{color:var(--muted);white-space:nowrap}
-.factgrid dd{margin:0;color:var(--ink);word-break:break-all}
+.factgrid dd{margin:0;color:var(--ink);word-break:break-all;overflow-wrap:anywhere}
 
 .hit{border:1.5px solid var(--ink);background:rgba(255,255,255,.6);padding:12px 13px;margin-top:4px}
 .hit .n{font-weight:600;font-size:14.5px;line-height:1.45;margin:0 0 5px}
-.hit .m{font-size:12.5px;color:var(--muted)}
+.hit .m{font-size:12.5px;color:var(--muted);overflow-wrap:anywhere}
 
 a.cta{display:block;text-align:center;margin:18px 20px 0;background:var(--ink);color:var(--paper);
   text-decoration:none;padding:14px;font-weight:600;font-size:15px;border-radius:2px}
