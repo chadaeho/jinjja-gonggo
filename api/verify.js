@@ -13,7 +13,7 @@ function db() {
 
 /* ---------------- Gemini ---------------- */
 const MODELS = (process.env.GEMINI_MODELS ||
-  "gemini-flash-latest,gemini-2.5-flash,gemini-2.0-flash,gemini-1.5-flash")
+  "gemini-2.0-flash,gemini-2.5-flash,gemini-flash-latest,gemini-2.0-flash-lite")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
@@ -41,7 +41,7 @@ const EXTRACT_PROMPT = `당신은 한국 소상공인이 받은 문자메시지�
 {{TEXT}}
 """`;
 
-async function callGemini(prompt, key, timeoutMs = 12000) {
+async function callGemini(prompt, key, timeoutMs = 9000) {
   const models = OK_MODEL ? [OK_MODEL, ...MODELS.filter((m) => m !== OK_MODEL)] : MODELS;
   let lastErr = "";
   for (const m of models) {
@@ -56,7 +56,12 @@ async function callGemini(prompt, key, timeoutMs = 12000) {
           signal: ctrl.signal,
           body: JSON.stringify({
             contents: [{ role: "user", parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0, maxOutputTokens: 700, responseMimeType: "application/json" },
+            generationConfig: {
+              temperature: 0,
+              maxOutputTokens: 2048,
+              responseMimeType: "application/json",
+              thinkingConfig: { thinkingBudget: 0 },
+            },
           }),
         }
       );
@@ -134,6 +139,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       ok: true,
       engine,
+      engineNote: extracted._error || extracted._model || "",
       maskedFields: masked,
       extracted: {
         claimed_program: extracted.claimed_program || "",
