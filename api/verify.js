@@ -13,7 +13,7 @@ function db() {
 
 /* ---------------- Gemini ---------------- */
 const MODELS = (process.env.GEMINI_MODELS ||
-  "gemini-3-flash-preview,gemini-flash-latest,gemini-3.5-flash,gemini-3.1-flash-lite,gemini-flash-lite-latest")
+  "gemini-3.1-flash-lite,gemini-flash-lite-latest,gemini-flash-latest,gemini-3.5-flash,gemini-3-flash-preview")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
