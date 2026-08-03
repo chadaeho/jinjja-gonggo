@@ -62,7 +62,7 @@ export function matchProgram(claimed, db, topN = 3) {
 const RE = {
   broker: /(수수료|성공보수|착수금|선입금|대행\s*(료|비|신청|접수)|신청\s*대행|컨설팅\s*비용|알선|브로커|수임료)/g,
   channel: /(카카오톡\s*(아이디|ID)|카톡\s*(아이디|ID)|오픈\s*채팅|오픈채팅|텔레그램|친구\s*추가|1:1\s*(상담|채팅)|일대일\s*채팅)/g,
-  credit: /(무담보|무보증|무신용|신용\s*무관|연체\s*(중|자)?\s*(도)?\s*가능|저신용|햇살론|정부\s*지원\s*대출|저금리\s*대환)/g,
+  credit: /(무담보|무보증|무신용|신용\s*무관|저신용|햇살론|정부\s*지원\s*대출|저금리\s*대환|연체[^.\n]{0,12}가능|소득\s*(확인|증빙)[^.\n]{0,12}(어렵|없|무관|불필요)|직업[^.\n]{0,12}(어렵|무관|불필요)|한도\s*조회|당일\s*(승인|입금)|긴급\s*승인)/g,
   pressure: /(마감\s*임박|선착순|조기\s*소진|오늘\s*까지|금일\s*마감|한정|긴급|즉시\s*지급|당일\s*지급|미신청|재안내|최종\s*안내)/g,
   selected: /(대상자로?\s*선정|확정\s*대상|선정\s*통보|지급\s*확정|승인\s*완료|한도\s*조회\s*완료)/g,
   evasion: /[가-힣]['`.,·]{1,3}[가-힣]|[가-힣]\s{1}[가-힣]{1}\s{1}[가-힣]{1}\s{1}[가-힣]/g,
@@ -195,7 +195,9 @@ export function judge({ extracted, signals, matches }) {
     risk += 35;
   }
   if (signals.channel.length) {
-    reasons.L3.push(`공식 창구가 아닌 개인 메신저 상담으로 유도 (${signals.channel.join(", ")})`);
+    reasons.L3.push(
+      `공식 창구가 아닌 개인 메신저 상담으로 유도 (${signals.channel.join(", ")}) — 공공기관은 개인 메신저로 상담하지 않음`
+    );
     risk += 25;
   }
   if (extracted.requests_money) {
@@ -212,6 +214,7 @@ export function judge({ extracted, signals, matches }) {
     signals.badUrls.length * 3 +
     signals.install.length * 3 +
     (signals.evasion ? 2 : 0) +
+    (signals.channel.length ? 2 : 0) +
     signals.intlSend.length +
     (signals.pressure.length ? 1 : 0);
 
@@ -220,6 +223,7 @@ export function judge({ extracted, signals, matches }) {
   else if (!strong && fraudScore >= 3) v = VERDICT.FRAUD;
   else if (strong && expired) v = VERDICT.UNKNOWN;
   else if (strong) v = VERDICT.VERIFIED;
+  else if (risk >= 60) v = VERDICT.FRAUD;   // 대조 실패 + 위험신호 누적 시 격상
   else v = VERDICT.UNKNOWN;
 
   risk = Math.max(0, Math.min(100, v.code === "VERIFIED" ? Math.min(risk, 15) : risk));
