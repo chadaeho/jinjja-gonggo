@@ -66,7 +66,12 @@ async function callGemini(prompt, key, timeoutMs = 9000) {
         }
       );
       clearTimeout(timer);
-      if (!r.ok) { lastErr = `${m}: HTTP ${r.status}`; continue; }
+      if (!r.ok) {
+        let detail = "";
+        try { const b = await r.json(); detail = b?.error?.message || b?.error?.status || ""; } catch {}
+        lastErr = `${m}: HTTP ${r.status} ${String(detail).slice(0, 200)}`;
+        continue;
+      }
       const j = await r.json();
       const txt = j?.candidates?.[0]?.content?.parts?.map((p) => p.text).join("") || "";
       if (!txt) { lastErr = `${m}: empty`; continue; }
@@ -105,7 +110,7 @@ export default async function handler(req, res) {
       } catch (e) {
         extracted = heuristicExtract(text);
         engine = "fallback";
-        extracted._error = String(e.message).slice(0, 120);
+        extracted._error = String(e.message).slice(0, 300);
       }
     } else {
       extracted = heuristicExtract(text);
@@ -140,6 +145,7 @@ export default async function handler(req, res) {
       ok: true,
       engine,
       engineNote: extracted._error || extracted._model || "",
+      engineDetail: extracted._error ? String(extracted._error).slice(0, 300) : "",
       maskedFields: masked,
       extracted: {
         claimed_program: extracted.claimed_program || "",
