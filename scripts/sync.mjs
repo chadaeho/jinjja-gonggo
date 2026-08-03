@@ -1,8 +1,7 @@
 /**
- * 진짜공고 — 공고 데이터 동기화
- *   1) 기업마당(bizinfo) 공개 목록 : 인증키 불요
- *   2) K-Startup 오픈API          : DATA_GO_KR_KEY 있을 때만 (보강)
- * 결과: data/announcements.json
+ * 진짜공고 — 공고 데이터 동기화 (기업마당 오픈API)
+ *   BIZINFO_KEY    : 기업마당 오픈API 인증키 (필수)
+ *   DATA_GO_KR_KEY : K-Startup 오픈API 키 (선택 보강)
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -11,57 +10,43 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(__dirname, "..", "data", "announcements.json");
 const UA = "Mozilla/5.0 (compatible; JinjjaGonggo/1.0)";
-const PAGES = Number(process.env.SYNC_PAGES || 60);
 
-const unesc = (s) =>
-  s
-    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, " ")
-    .replace(/\s+/g, " ").trim();
-
-/** 사업명 정규화 — 대조 키 생성 */
 export function normalize(s) {
   return (s || "")
-    .replace(/\[[^\]]{1,12}\]/g, " ")          // [지역] 태그 제거
-    .replace(/\([^)]{0,30}\)/g, " ")           // 괄호 보조설명 제거
-    .replace(/[^가-힣A-Za-z0-9]/g, "")         // 특수문자·공백 제거
+    .replace(/\[[^\]]{1,12}\]/g, " ")
+    .replace(/\([^)]{0,30}\)/g, " ")
+    .replace(/[^가-힣A-Za-z0-9]/g, "")
     .replace(/(제?\d+차|\d{4}년도?|\d+회)/g, "")
     .toUpperCase();
 }
 
-async function fetchBizinfoPage(cpage) {
-  const url =
-    "https://www.bizinfo.go.kr/sii/siia/selectSIIA200View.do?schEndAt=N&cpage=" + cpage;
-  const res = await fetch(url, { headers: { "User-Agent": UA } });
-  if (!res.ok) throw new Error("bizinfo " + res.status);
-  const html = await res.text();
+const stripTag = (s) =>
+  String(s || "").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ").trim();
 
-  const rows = [];
-  const trRe = /<tr>([\s\S]*?)<\/tr>/g;
-  let m;
-  while ((m = trRe.exec(html))) {
-    const tr = m[1];
-    if (!tr.includes("selectSIIA200Detail")) continue;
-    const tds = [...tr.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((x) => unesc(x[1].replace(/<[^>]+>/g, " ")));
-    const idm = tr.match(/pblancId=(PBLN_\d+)/);
-    const nm = tr.match(/<a[^>]*>([\s\S]*?)<\/a>/);
-    if (!idm || !nm) continue;
-    const name = unesc(nm[1]);
-    const period = (tds.find((t) => /\d{4}-\d{2}-\d{2}\s*~/.test(t)) || "").trim();
-    const [start, end] = period.split("~").map((s) => (s || "").trim());
-    rows.push({
-      src: "기업마당",
-      id: idm[1],
-      name,
-      field: tds[1] || "",
-      start: start || "",
-      end: end || "",
-      region: tds[4] || "",
-      org: tds[5] || "",
-      url: "https://www.bizinfo.go.kr/sii/siia/selectSIIA200Detail.do?pblancId=" + idm[1],
-    });
-  }
-  return rows;
+async function fetchBizinfo(key) {
+  const url = `https://www.bizinfo.go.kr/uss/rss/bizinfoApi.do?crtfcKey=${encodeURIComponent(key)}&dataType=json`;
+  const r = await fetch(url, { headers: { "User-Agent": UA } });
+  if (!r.ok) throw new Error("bizinfo HTTP " + r.status);
+  const j = await r.json();
+  if (j.reqErr) throw new Error("bizinfo: " + j.reqErr);
+  return (j.jsonArray || []).map((it) => {
+    const [start, end] = String(it.reqstBeginEndDe || "").split("~").map((s) => (s || "").trim());
+    return {
+      src: "기업마당", id: it.pblancId, name: String(it.pblancNm || "").trim(),
+      org: String(it.jrsdInsttNm || "").trim(),
+      exec: String(it.excInsttNm || "").trim(),
+      field: String(it.pldirSportRealmLclasCodeNm || "").trim(),
+      target: String(it.trgetNm || "").trim(),
+      start: start || "", end: end || "",
+      apply: String(it.reqstMthPapersCn || "").trim().slice(0, 60),
+      tel: String(it.refrncNm || "").trim().slice(0, 80),
+      url: it.pblancUrl || "", site: it.rceptEngnHmpgUrl || "",
+      tags: String(it.hashtags || "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, 12),
+      summary: stripTag(it.bsnsSumryCn).slice(0, 160),
+    };
+  });
 }
 
 async function fetchKStartup() {
@@ -69,79 +54,50 @@ async function fetchKStartup() {
   if (!key) return [];
   const out = [];
   for (let page = 1; page <= 10; page++) {
-    const url =
-      "https://apis.data.go.kr/B552735/kisedKstartupService01/getAnnouncementInformation01" +
-      `?serviceKey=${encodeURIComponent(key)}&page=${page}&perPage=100&returnType=json`;
     try {
-      const r = await fetch(url, { headers: { "User-Agent": UA } });
+      const r = await fetch(
+        "https://apis.data.go.kr/B552735/kisedKstartupService01/getAnnouncementInformation01" +
+        `?serviceKey=${encodeURIComponent(key)}&page=${page}&perPage=100&returnType=json`,
+        { headers: { "User-Agent": UA } });
       const j = await r.json();
-      const items = j?.data || j?.response?.body?.items || [];
+      const items = j?.data || [];
       if (!items.length) break;
       for (const it of items) {
         const name = it.biz_pbanc_nm || it.intg_pbanc_biz_nm || "";
         if (!name) continue;
         out.push({
-          src: "K-Startup",
-          id: String(it.pbanc_sn || it.id || name),
-          name,
-          field: it.supt_biz_clsfc || "",
+          src: "K-Startup", id: String(it.pbanc_sn || name), name,
+          org: it.pbanc_ntrp_nm || "창업진흥원", exec: "", field: it.supt_biz_clsfc || "",
+          target: it.aply_trgt || "",
           start: String(it.pbanc_rcpt_bgng_dt || "").replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3"),
           end: String(it.pbanc_rcpt_end_dt || "").replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3"),
-          region: it.supt_regin || "",
-          org: it.pbanc_ntrp_nm || "창업진흥원",
-          url: it.detl_pg_url || "https://www.k-startup.go.kr",
+          apply: "", tel: "", url: it.detl_pg_url || "https://www.k-startup.go.kr",
+          site: "", tags: [], summary: String(it.pbanc_ctnt || "").slice(0, 160),
         });
       }
-    } catch (e) {
-      console.error("kstartup page", page, e.message);
-      break;
-    }
+    } catch { break; }
   }
   return out;
 }
 
 const run = async () => {
-  const all = [];
-  for (let p = 1; p <= PAGES; p++) {
-    try {
-      const rows = await fetchBizinfoPage(p);
-      if (!rows.length) break;
-      all.push(...rows);
-      process.stdout.write(`\r기업마당 수집 ${p}p / 누적 ${all.length}건`);
-      await new Promise((r) => setTimeout(r, 120));
-    } catch (e) {
-      console.error("\npage", p, e.message);
-      break;
-    }
-  }
-  console.log("");
+  const key = process.env.BIZINFO_KEY;
+  if (!key) { console.error("환경변수 BIZINFO_KEY 가 필요합니다."); process.exit(1); }
+  const biz = await fetchBizinfo(key);
+  console.log("기업마당 오픈API 수집:", biz.length, "건");
   const ks = await fetchKStartup();
-  if (ks.length) console.log("K-Startup 보강", ks.length, "건");
-  all.push(...ks);
+  if (ks.length) console.log("K-Startup 보강:", ks.length, "건");
 
-  const seen = new Set();
-  const items = [];
-  for (const a of all) {
+  const seen = new Set(); const items = [];
+  for (const a of [...biz, ...ks]) {
     const k = a.src + "|" + a.id;
-    if (seen.has(k)) continue;
+    if (seen.has(k) || !a.name) continue;
     seen.add(k);
     items.push({ ...a, key: normalize(a.name) });
   }
-
-  // 기관명 사전(대조 보조)
-  const orgs = [...new Set(items.map((i) => i.org).filter(Boolean))];
-
+  const orgs = [...new Set(items.flatMap((i) => [i.org, i.exec]).filter(Boolean))];
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
-  fs.writeFileSync(
-    OUT,
-    JSON.stringify(
-      { syncedAt: new Date().toISOString(), count: items.length, orgs, items },
-      null,
-      0
-    ),
-    "utf-8"
-  );
-  console.log("저장 완료:", OUT, items.length, "건");
+  fs.writeFileSync(OUT, JSON.stringify({ syncedAt: new Date().toISOString(), count: items.length, orgs, items }), "utf-8");
+  console.log("저장 완료:", items.length, "건 / 기관", orgs.length, "개");
 };
-
 run();

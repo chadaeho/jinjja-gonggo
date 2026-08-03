@@ -67,7 +67,7 @@ export function orgConsistent(claimedOrg, item) {
   const c = String(claimedOrg || "").replace(/[^가-힣A-Za-z0-9]/g, "");
   // 기관명 형태가 아니면 판단 보류(추출 잡음으로 정탐을 막지 않기 위함)
   if (c.length < 2 || !ORG_LIKE.test(c)) return null;
-  const hay = `${item.org || ""}${item.region || ""}${item.name || ""}`.replace(/[^가-힣A-Za-z0-9]/g, "");
+  const hay = `${item.org || ""}${item.exec || ""}${item.name || ""}${(item.tags || []).join("")}`.replace(/[^가-힣A-Za-z0-9]/g, "");
   if (!hay) return null;
   if (hay.includes(c)) return true;
   const io = String(item.org || "").replace(/[^가-힣A-Za-z0-9]/g, "");
@@ -158,7 +158,7 @@ export function judge({ extracted, signals, matches }) {
   const best = matches[0];
   const orgOk = best ? orgConsistent(extracted.claimed_org, best.item) : null;
   // 기관이 불일치하면 훨씬 높은 일치도를 요구 (타 지역·타 기관 사업 오인 방지)
-  const need = orgOk === true ? 0.62 : 0.72;
+  const need = orgOk === true ? 0.62 : 0.66;
   // 기관이 명확히 불일치하면 일치도와 무관하게 '확인됨' 판정 불가
   const strong = best && best.score >= need && orgOk !== false;
   const weak = best && best.score >= 0.40 && !strong;
@@ -168,7 +168,7 @@ export function judge({ extracted, signals, matches }) {
     const it = best.item;
     expired = it.end && it.end < today();
     reasons.L1.push(
-      `정부 공고 데이터에서 「${it.name}」 확인 (${it.org}${it.start ? `, 접수 ${it.start}~${it.end}` : ""})`
+      `정부 공고 데이터에서 「${it.name}」 확인 (소관 ${it.org}${it.exec && it.exec !== it.org ? " / 수행 " + it.exec : ""}${it.start ? `, 접수 ${it.start}~${it.end}` : ""})`
     );
     if (expired) {
       reasons.L1.push(`다만 해당 공고의 접수기간이 ${it.end}자로 이미 종료됨 — 현재 접수 중인 사업이 아님`);
@@ -180,7 +180,7 @@ export function judge({ extracted, signals, matches }) {
     );
     if (orgOk === false) {
       reasons.L1.push(
-        `문자가 밝힌 기관(${extracted.claimed_org})과 해당 공고의 소관기관(${best.item.org}${best.item.region ? ", " + best.item.region : ""})이 일치하지 않음 — 동일 명칭 사업이 다른 지역·기관에 존재하므로 해당 기관에 직접 확인 필요`
+        `문자가 밝힌 기관(${extracted.claimed_org})과 해당 공고의 소관기관(${best.item.org}${best.item.exec && best.item.exec !== best.item.org ? " / " + best.item.exec : ""})이 일치하지 않음 — 동일 명칭 사업이 다른 지역·기관에 존재하므로 해당 기관에 직접 확인 필요`
       );
       risk += 10;
     }
@@ -278,11 +278,16 @@ export function judge({ extracted, signals, matches }) {
 
 /* ---------------------------------------------- 5. 안내 문안 */
 export function guidance(v, match) {
+  const tel = match && match.tel ? match.tel : "";
+  const how = match && match.apply ? match.apply : "";
   switch (v.code) {
     case "VERIFIED":
       return {
         headline: "정부 공고 데이터에서 동일한 사업이 확인되었습니다.",
-        action: "다만 문자 속 링크는 누르지 마시고, 아래 공식 공고 페이지에서 직접 신청하십시오.",
+        action:
+          "다만 문자 속 링크는 누르지 마시고, 아래 공식 공고 페이지에서 직접 신청하십시오." +
+          (how ? ` 공식 접수 방법은 ‘${how}’입니다.` : ""),
+        contact: tel ? `공식 문의처 : ${tel}` : "",
         cta: match ? { text: "공식 공고 확인하기", url: match.url } : null,
       };
     case "UNKNOWN":
@@ -290,6 +295,7 @@ export function guidance(v, match) {
         headline: "공고 데이터에서 확인되지 않았습니다. 사기로 단정할 수는 없습니다.",
         action:
           "지방자치단체 자체사업이나 신규 공고는 아직 수집되지 않았을 수 있습니다. 문자에 적힌 번호가 아니라 소관기관 대표번호로 직접 확인하십시오.",
+        contact: tel ? `유사 공고의 공식 문의처 : ${tel}` : "",
         cta: { text: "기업마당에서 직접 검색", url: "https://www.bizinfo.go.kr/sii/siia/selectSIIA200View.do" },
       };
     case "FRAUD":
@@ -297,6 +303,7 @@ export function guidance(v, match) {
         headline: "사기로 의심됩니다. 링크를 누르거나 회신하지 마십시오.",
         action:
           "해당 문자를 삭제하지 말고 화면을 캡처해 두신 뒤 신고하십시오. 이미 링크를 눌렀다면 즉시 통신사·금융회사에 알리시기 바랍니다.",
+        contact: "불법스팸 신고 : 118 (KISA) / 보이스피싱 신고 : 112",
         cta: { text: "불법스팸 신고 (KISA 118)", url: "https://spam.kisa.or.kr" },
       };
     case "BROKER":
@@ -304,38 +311,66 @@ export function guidance(v, match) {
         headline: "수수료·대행을 요구하는 제3자 개입이 의심됩니다.",
         action:
           "정부 지원사업 신청은 전액 무료이며, 대행 수수료를 요구하는 행위는 부당개입에 해당합니다. 직접 신청이 가능합니다.",
+        contact: "소상공인 통합콜센터 : 1357",
         cta: { text: "제3자 부당개입 신고", url: "https://www.semas.or.kr" },
       };
     default:
-      return { headline: "", action: "", cta: null };
+      return { headline: "", action: "", contact: "", cta: null };
   }
 }
 
-/* ---------------------------------------------- 6. AI 미사용 시 대체 추출 */
-const ORG_RE = /(중소벤처기업부|중소기업벤처부|소상공인시장진흥공단|중소벤처기업진흥공단|기술보증기금|신용보증기금|창업진흥원|[가-힣]{2,10}(?:테크노파크|진흥원|공단|재단|센터|청|시청|군청|구청|도청))/;
+/* ---------------------------------------------- 7. 최신 공고 실시간 보강 (오픈API) */
+let LIVE = { at: 0, items: [] };
+export async function liveTopUp(ttlMs = 1800000, timeoutMs = 7000) {
+  const key = process.env.BIZINFO_KEY;
+  if (!key) return [];
+  if (Date.now() - LIVE.at < ttlMs && LIVE.items.length) return LIVE.items;
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    const r = await fetch(
+      `https://www.bizinfo.go.kr/uss/rss/bizinfoApi.do?crtfcKey=${encodeURIComponent(key)}&dataType=json`,
+      { headers: { "User-Agent": "JinjjaGonggo/1.0" }, signal: ctrl.signal }
+    );
+    clearTimeout(t);
+    if (!r.ok) return LIVE.items;
+    const j = await r.json();
+    if (j.reqErr) return LIVE.items;
+    const items = (j.jsonArray || []).map((it) => {
+      const [start, end] = String(it.reqstBeginEndDe || "").split("~").map((x) => (x || "").trim());
+      const name = String(it.pblancNm || "").trim();
+      return {
+        src: "기업마당(실시간)", id: it.pblancId, name, key: normalize(name),
+        org: String(it.jrsdInsttNm || "").trim(), exec: String(it.excInsttNm || "").trim(),
+        start: start || "", end: end || "",
+        tel: String(it.refrncNm || "").trim().slice(0, 80),
+        apply: String(it.reqstMthPapersCn || "").trim().slice(0, 60),
+        tags: String(it.hashtags || "").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 12),
+        url: it.pblancUrl || "",
+      };
+    });
+    if (items.length) LIVE = { at: Date.now(), items };
+  } catch { /* 실패 시 내장 데이터만 사용 */ }
+  return LIVE.items;
+}
+
+/* ---------------------------------------------- 8. AI 미사용 시 대체 추출 */
+const ORG_RE = /(중소벤처기업부|중소기업벤처부|소상공인시장진흥공단|중소벤처기업진흥공단|기술보증기금|신용보증기금|창업진흥원|[가-힣]{2,8}(?:광역시|특별시|특별자치시|특별자치도)|[가-힣]{2,10}(?:테크노파크|진흥원|공단|재단|센터|청|시청|군청|구청|도청))/;
 
 export function heuristicExtract(text) {
   const t = String(text || "").replace(/['`·]{1,3}(?=[가-힣])/g, "").replace(/([가-힣]),{1,3}(?=[가-힣])/g, "$1");
   let name = "";
-
-  // ① 『』「」 인용부호 — 가장 강한 신호
   let m = t.match(/[『「]([^』」]{4,50})[』」]/);
   if (m) name = m[1];
-
-  // ② 사업명 접미어 패턴
   if (!name) {
     m = t.match(/([가-힣A-Za-z0-9·\-\s]{4,50}?(?:지원사업|지원금|정책자금|보조금|융자사업|융자|바우처|특별자금|보상금|보전금|모집\s*공고|지원\s*공고))/);
     if (m) name = m[1];
   }
-
-  // ③ 대괄호 — 기관명만 들어 있으면 제외
   if (!name) {
     m = t.match(/\[([^\]]{4,50})\]/);
     if (m && !ORG_RE.test(m[1]) && !/발신/.test(m[1])) name = m[1];
   }
-
   name = name.replace(/^\s*(?:\[[^\]]{1,14}\]|○|◦|▶|※)\s*/g, "").trim();
-
   return {
     claimed_program: name,
     claimed_org: (t.match(ORG_RE) || [])[1] || "",
@@ -344,52 +379,6 @@ export function heuristicExtract(text) {
     is_policy_fund_claim: /정책자금|지원금|보조금|융자|소상공인|손실보상|대출|지원사업/.test(t),
     requests_money: /(수수료|선입금|착수금|성공보수|송금|입금\s*바랍)/.test(t),
     requests_personal_info: /(주민등록|신분증|통장\s*사본|사업자등록증|개인정보)/.test(t),
-    summary: "",
-    _engine: "rule",
+    summary: "", _engine: "rule",
   };
-}
-
-/* ---------------------------------------------- 7. 최신 공고 실시간 보강 */
-const unesc = (s) => s.replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">")
-  .replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&nbsp;/g," ").replace(/\s+/g," ").trim();
-
-export function parseBizinfoHtml(html) {
-  const rows = [];
-  const trRe = /<tr>([\s\S]*?)<\/tr>/g; let m;
-  while ((m = trRe.exec(html))) {
-    const tr = m[1];
-    if (!tr.includes("selectSIIA200Detail")) continue;
-    const tds = [...tr.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((x) => unesc(x[1].replace(/<[^>]+>/g, " ")));
-    const idm = tr.match(/pblancId=(PBLN_\d+)/);
-    const nm = tr.match(/<a[^>]*>([\s\S]*?)<\/a>/);
-    if (!idm || !nm) continue;
-    const period = (tds.find((t) => /\d{4}-\d{2}-\d{2}\s*~/.test(t)) || "").trim();
-    const [start, end] = period.split("~").map((s) => (s || "").trim());
-    const name = unesc(nm[1]);
-    rows.push({ src:"기업마당(실시간)", id:idm[1], name, field:tds[1]||"", start:start||"", end:end||"",
-      region:tds[4]||"", org:tds[5]||"", key:normalize(name),
-      url:"https://www.bizinfo.go.kr/sii/siia/selectSIIA200Detail.do?pblancId="+idm[1] });
-  }
-  return rows;
-}
-
-let LIVE = { at: 0, items: [] };
-export async function liveTopUp(pages = 3, ttlMs = 300000, timeoutMs = 4500) {
-  if (Date.now() - LIVE.at < ttlMs && LIVE.items.length) return LIVE.items;
-  const out = [];
-  try {
-    for (let p = 1; p <= pages; p++) {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), timeoutMs);
-      const r = await fetch(
-        "https://www.bizinfo.go.kr/sii/siia/selectSIIA200View.do?schEndAt=N&cpage=" + p,
-        { headers: { "User-Agent": "Mozilla/5.0 (compatible; JinjjaGonggo/1.0)" }, signal: ctrl.signal }
-      );
-      clearTimeout(t);
-      if (!r.ok) break;
-      out.push(...parseBizinfoHtml(await r.text()));
-    }
-  } catch { /* 실패 시 스냅샷만 사용 */ }
-  if (out.length) LIVE = { at: Date.now(), items: out };
-  return LIVE.items;
 }

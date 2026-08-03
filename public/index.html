@@ -133,6 +133,8 @@ button{font-family:var(--f-body);cursor:pointer;border-radius:2px;transition:.15
 a.cta{display:block;text-align:center;margin:18px 20px 0;background:var(--ink);color:var(--paper);
   text-decoration:none;padding:14px;font-weight:600;font-size:15px;border-radius:2px}
 a.cta:hover{background:#1c2c48}
+.contact{margin:14px 20px 0;padding:11px 13px;border:1.5px solid var(--ink);background:rgba(255,255,255,.62);font-size:13.5px;line-height:1.55;font-weight:500}
+.contact b{font-family:var(--f-disp);display:block;font-size:12px;letter-spacing:.08em;color:var(--muted);margin-bottom:3px;font-weight:700}
 .note{margin:14px 20px 0;font-size:12.5px;color:var(--muted);line-height:1.6;
   border-left:3px solid var(--rule);padding-left:11px}
 
@@ -178,7 +180,7 @@ footer hr{border:0;border-top:1px solid #2a3852;margin:14px 0}
 <footer>
   <b>개인정보 처리</b> — 입력하신 내용은 전송 전 브라우저 안에서 전화번호·계좌번호·주민등록번호·이메일이 자동 마스킹되며, 서버에서 한 번 더 마스킹합니다. 원문은 <b>저장·기록하지 않으며</b> 판별 즉시 폐기됩니다. 회원가입·로그인 절차가 없어 수집하는 개인정보 항목 자체가 없습니다.
   <hr />
-  <b>대조 데이터</b> — 중소벤처기업부 기업마당 지원사업 공고(공공누리 개방자료) <span id="ds"></span>
+  <b>대조 데이터</b> — 중소벤처기업부 기업마당 지원사업 공고 오픈API(공공누리 개방자료) <span id="ds"></span>
   <hr />
   <b>유의</b> — 본 서비스는 참고 정보를 제공하는 보조 도구이며 법적 효력이 없습니다. ‘공고 미확인’은 사기를 뜻하지 않습니다. 최종 확인은 반드시 소관기관 대표번호를 통해 하시기 바랍니다.
   <div style="margin-top:14px;color:#5f6f88">2026 금융 AI Challenge 출품작 · 진짜공고</div>
@@ -260,7 +262,7 @@ function render(d){
 
     ${d.match&&d.match.strong?`<div class="sec"><h3>대조 결과</h3>
       <div class="hit"><p class="n">${esc(d.match.name)}</p>
-      <p class="m">${esc(d.match.org)}${d.match.start?` · 접수 ${esc(d.match.start)} ~ ${esc(d.match.end)}`:""} · 일치도 ${(d.match.score*100).toFixed(0)}%</p></div></div>`:""}
+      <p class="m">${esc(d.match.org)}${d.match.exec&&d.match.exec!==d.match.org?` / ${esc(d.match.exec)}`:""}${d.match.start?` · 접수 ${esc(d.match.start)} ~ ${esc(d.match.end)}`:""} · 일치도 ${(d.match.score*100).toFixed(0)}%${d.match.apply?`<br>접수방법 : ${esc(d.match.apply)}`:""}</p></div></div>`:""}
 
     ${facts.length?`<div class="sec"><h3>문자에서 추출한 정보</h3>
       <dl class="factgrid">${facts.map(x=>`<dt>${x[0]}</dt><dd>${esc(x[1])}</dd>`).join("")}</dl></div>`:""}
@@ -270,6 +272,8 @@ function render(d){
       ${layer(2,"사기 수법 패턴",d.reasons.L2)}
       ${layer(3,"브로커 개입 탐지",d.reasons.L3)}
     </div>
+
+    ${d.contact?`<div class="contact"><b>직접 확인하실 곳</b>${esc(d.contact)}</div>`:""}
 
     ${g.cta?`<a class="cta" href="${esc(g.cta.url)}" target="_blank" rel="noopener">${esc(g.cta.text)}</a>`:""}
 

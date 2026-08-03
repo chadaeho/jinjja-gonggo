@@ -164,6 +164,7 @@ export default async function handler(req, res) {
       risk: result.risk,
       reasons: result.reasons,
       match: result.match,
+      contact: guide.contact || "",
       candidates: result.candidates,
       guide,
       dataset: { syncedAt: D.syncedAt, count: D.count, live: liveUsed },
