@@ -295,7 +295,7 @@ export function guidance(v, match) {
         headline: "공고 데이터에서 확인되지 않았습니다. 사기로 단정할 수는 없습니다.",
         action:
           "지방자치단체 자체사업이나 신규 공고는 아직 수집되지 않았을 수 있습니다. 문자에 적힌 번호가 아니라 소관기관 대표번호로 직접 확인하십시오.",
-        contact: tel ? `유사 공고의 공식 문의처 : ${tel}` : "",
+        contact: "중소기업·소상공인 통합콜센터 : 1357 (지원사업 진위 확인 가능)",
         cta: { text: "기업마당에서 직접 검색", url: "https://www.bizinfo.go.kr/sii/siia/selectSIIA200View.do" },
       };
     case "FRAUD":
@@ -343,8 +343,8 @@ export async function liveTopUp(ttlMs = 1800000, timeoutMs = 7000) {
         src: "기업마당(실시간)", id: it.pblancId, name, key: normalize(name),
         org: String(it.jrsdInsttNm || "").trim(), exec: String(it.excInsttNm || "").trim(),
         start: start || "", end: end || "",
-        tel: String(it.refrncNm || "").trim().slice(0, 80),
-        apply: String(it.reqstMthPapersCn || "").trim().slice(0, 60),
+        tel: String(it.refrncNm || "").replace(/\s+/g, " ").trim().slice(0, 80),
+        apply: String(it.reqstMthPapersCn || "").replace(/\s+/g, " ").trim().slice(0, 60),
         tags: String(it.hashtags || "").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 12),
         url: it.pblancUrl || "",
       };
